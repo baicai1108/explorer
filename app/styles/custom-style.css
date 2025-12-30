@@ -1,0 +1,25 @@
+/* 自定义深色主题 */
+body {
+    background-color: #1a1a1a;
+    color: #e0e0e0;
+    font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+}
+.navbar-inverse {
+    background-color: #2c3e50;
+    border-color: #0c0c0c;
+}
+.well, .table {
+    background-color: #2d2d2d;
+    border: 1px solid #444;
+}
+a {
+    color: #5dade2;
+}
+a:hover {
+    color: #3498db;
+}
+/* 高亮重要数据 */
+.address-hash, .tx-hash {
+    color: #f39c12;
+    font-weight: bold;
+}

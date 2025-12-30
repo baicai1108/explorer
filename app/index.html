@@ -1,85 +1,449 @@
 <!DOCTYPE html>
-<!--[if lt IE 7]>      <html lang="en" ng-app="ethExplorer" class="no-js lt-ie9 lt-ie8 lt-ie7"> <![endif]-->
-<!--[if IE 7]>         <html lang="en" ng-app="ethExplorer" class="no-js lt-ie9 lt-ie8"> <![endif]-->
-<!--[if IE 8]>         <html lang="en" ng-app="ethExplorer" class="no-js lt-ie9"> <![endif]-->
-<!--[if gt IE 8]><!--> <html lang="en" ng-app="ethExplorer" class="no-js"> <!--<![endif]-->
+<html lang="en" ng-app="ethExplorer">
 <head>
-  <meta charset="utf-8">
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <title>Ethereum Block Explorer</title>
-  <meta name="description" content="">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" href="styles/main.css">
-  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css">
-  <script src="bower_components/web3/dist/web3.min.js"></script>
-
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>私有链浏览器</title>
+    <meta name="description" content="基于 etherparty/explorer 改造的私有链浏览器">
+    
+    <!-- 在线图标 -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔗</text></svg>">
+    
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/3.3.5/css/bootstrap.min.css">
+    
+    <style>
+        body { 
+            padding-top: 70px; 
+            font-family: 'Microsoft YaHei', sans-serif;
+            background-color: #f5f5f5;
+        }
+        .navbar-fixed-top { 
+            position: fixed; 
+            top: 0; 
+            width: 100%; 
+            z-index: 1030; 
+        }
+        .container { 
+            max-width: 1200px; 
+            margin: 0 auto; 
+        }
+        .status-indicator { 
+            display: inline-block; 
+            width: 10px; 
+            height: 10px; 
+            border-radius: 50%; 
+            margin-right: 5px; 
+        }
+        .connected { background-color: #5cb85c; }
+        .disconnected { background-color: #d9534f; }
+        .form-control { width: 400px; max-width: 100%; }
+        .monospace { font-family: monospace; font-size: 12px; }
+        .block-info { margin-top: 20px; }
+    </style>
 </head>
-<body>
+<body ng-controller="MainController">
   
 <nav class="navbar navbar-inverse navbar-fixed-top">
     <div class="container">
         <div class="navbar-header">
-            <span class="icon-bar"></span><a href="/#/" class="navbar-brand">Ether Block Explorer</a>
+            <a href="#" class="navbar-brand" ng-click="goHome()">私有链浏览器</a>
         </div>
+        
+        <!-- 导航栏状态 -->
+        <div class="navbar-text navbar-left" style="margin-left:15px; color:#ccc; font-size:13px;">
+            <span class="status-indicator" ng-class="{'connected': connected, 'disconnected': !connected}"></span>
+            区块: {{blockNumber || '--'}}
+        </div>
+        
         <div id="navbar" class="navbar-collapse collapse">
-            <ul class="nav navbar-nav">
-            <form  name="search_form" ng-controller="mainCtrl" ng-submit="processRequest()"  class="navbar-form navbar-right">
-            <div class="form-group">
-            <input type="text" placeholder="Tx Hash, Address or Block number" name="requestType" required  ng-model="ethRequest"  class="form-control"><br>
-            </div>
-            <button type="submit" class="btn btn-success">Search</button></form>
-            </ul>
-	    </div>
+            <form name="search_form" ng-submit="search()" class="navbar-form navbar-right">
+                <div class="form-group">
+                    <input type="text" placeholder="交易哈希、地址或区块号" 
+                           ng-model="searchInput" class="form-control" required>
+                </div>
+                <button type="submit" class="btn btn-success">搜索</button>
+            </form>
+        </div>
     </div>
 </nav>
 
-
-
-  <div ng-view></div>
-
-<!--Libs-->
-
-  <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.4.5/angular.min.js"></script>
-  <script src="bower_components/angular-bootstrap/ui-bootstrap.min.js"></script>
-  <script src="bower_components/angular-route/angular-route.js"></script>
-  <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
-  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/js/bootstrap.min.js"></script>
-<!--Core-->
-  <script src="app.js"></script>
-
-<!--Controllers-->
-  <script src="scripts/controllers/mainController.js"></script>
-  <script src="scripts/controllers/addressInfoController.js"></script>
-  <script src="scripts/controllers/blockInfosController.js"></script>
-  <script src="scripts/controllers/transactionInfosController.js"></script>
-
-  <!--Services-->
-    <div id="connectwarning" class="modal fade" role="dialog">
-        <div class="modal-dialog">
-
-            <!-- Modal content-->
-            <div class="modal-content">
-                <center><div class="modal-header">
-                    <h4 class="modal-title">Allow Access to Geth and Refresh the Page</h4>
+<div class="container">
+    <!-- 连接状态 -->
+    <div class="alert" ng-class="{'alert-success': connected, 'alert-warning': !connected}" style="margin-top: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <span ng-if="connected">
+                    ✅ 已连接到私有链节点
+                </span>
+                <span ng-if="!connected">
+                    ⚠️ 未连接到私有链节点
+                </span>
+                <span style="margin-left: 10px;" ng-if="connected">
+                    当前区块: <strong>{{blockNumber}}</strong>
+                </span>
+            </div>
+            <button ng-click="checkConnection()" class="btn btn-sm" ng-class="{'btn-success': connected, 'btn-warning': !connected}">
+                刷新连接
+            </button>
+        </div>
+    </div>
+    
+    <!-- 最新区块信息 -->
+    <div class="panel panel-default block-info" ng-if="latestBlock">
+        <div class="panel-heading">
+            <h3 class="panel-title">最新区块信息</h3>
+        </div>
+        <div class="panel-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <p><strong>区块高度:</strong> {{latestBlock.number}}</p>
+                    <p><strong>矿工地址:</strong> <span class="monospace">{{latestBlock.miner}}</span></p>
+                    <p><strong>难度:</strong> {{latestBlock.difficulty}}</p>
                 </div>
-                <div class="modal-body">
-                    <code><p id="modaltext"></p></code>
-                </div></center>
+                <div class="col-md-6">
+                    <p><strong>交易数量:</strong> {{latestBlock.transactions ? latestBlock.transactions.length : 0}}</p>
+                    <p><strong>时间戳:</strong> {{(latestBlock.timestamp * 1000) | date:'yyyy-MM-dd HH:mm:ss'}}</p>
+                    <p><strong>Gas 限制:</strong> {{latestBlock.gasLimit}}</p>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-12">
+                    <p><strong>区块哈希:</strong> <span class="monospace">{{latestBlock.hash}}</span></p>
+                    <p><strong>父区块哈希:</strong> <span class="monospace">{{latestBlock.parentHash}}</span></p>
+                </div>
             </div>
         </div>
     </div>
-
-
-<div class="footer" style="bottom: 0px;text-align: center;background-color: white; width:100%;">
-    <footer>
-        <hr>
-        <p>
-            © Etherparty.io 2017 | <a href="http://github.com/etherparty/explorer">Fork me on GitHub</a>
-        </p>
-    </footer>
+    
+    <!-- 区块详情页 -->
+    <div ng-if="viewMode === 'block'">
+        <h2>区块详情 #{{currentBlockId}}</h2>
+        <div ng-if="blockDetail">
+            <pre>{{blockDetail | json}}</pre>
+        </div>
+    </div>
+    
+    <!-- 加载指示器 -->
+    <div class="text-center" ng-if="loading">
+        <div class="spinner-border text-primary" role="status">
+            <span class="sr-only">加载中...</span>
+        </div>
+        <p>加载中...</p>
+    </div>
 </div>
+
+<!-- 页脚 -->
+<footer style="margin-top: 40px; padding: 20px 0; background: #2c3e50; color: #ecf0f1;">
+    <div class="container">
+        <div class="row">
+            <div class="col-md-6">
+                <p><strong>私有链浏览器 v1.0</strong></p>
+                <p>基于 etherparty/explorer 改造</p>
+            </div>
+            <div class="col-md-6 text-right">
+                <p>节点: <code>{{nodeUrl}}</code></p>
+                <p>状态: 
+                    <span ng-if="connected" style="color: #5cb85c;">● 已连接</span>
+                    <span ng-if="!connected" style="color: #d9534f;">● 未连接</span>
+                </p>
+            </div>
+        </div>
+    </div>
+</footer>
+
+<!-- ========== 所有依赖使用 CDN ========== -->
+<!-- jQuery -->
+<script src="https://cdn.bootcdn.net/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
+<!-- Bootstrap JS -->
+<script src="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/3.3.5/js/bootstrap.min.js"></script>
+<!-- Web3 -->
+<script src="https://cdn.jsdelivr.net/npm/web3@0.14.0/dist/web3.min.js"></script>
+<!-- AngularJS 1.4.5 -->
+<script src="https://cdn.bootcdn.net/ajax/libs/angular.js/1.4.5/angular.min.js"></script>
+<!-- Angular Route 1.4.5 -->
+<script src="https://cdn.bootcdn.net/ajax/libs/angular.js/1.4.5/angular-route.min.js"></script>
+
+<!-- 应用脚本 - 直接内联 -->
 <script>
-$("#modaltext").text( 'geth --rpc --rpccorsdomain "'+ window.location.protocol + '//' + window.location.host + '"' );
+// 应用主脚本
+(function() {
+    'use strict';
+    
+    console.log('=== 私有链浏览器初始化 ===');
+    console.log('Angular版本:', angular ? angular.version.full : '未加载');
+    
+    // 检查所有依赖
+    if (typeof angular === 'undefined') {
+        console.error('错误: AngularJS 未加载');
+        alert('AngularJS 加载失败，请刷新页面');
+        return;
+    }
+    
+    if (typeof jQuery === 'undefined') {
+        console.error('警告: jQuery 未加载，部分功能可能受限');
+    }
+    
+    if (typeof Web3 === 'undefined') {
+        console.error('警告: Web3 未加载，区块链功能不可用');
+    }
+    
+    // 创建Angular应用
+    var app = angular.module('ethExplorer', ['ngRoute']);
+    console.log('Angular模块创建成功');
+    
+    // 配置路由
+    app.config(['$routeProvider', function($routeProvider) {
+        console.log('配置路由');
+        $routeProvider
+            .when('/', {
+                template: '', // 使用内联模板
+                controller: 'MainController'
+            })
+            .otherwise({
+                redirectTo: '/'
+            });
+    }]);
+    
+    // 主控制器
+    app.controller('MainController', ['$scope', '$http', '$timeout', '$location',
+        function($scope, $http, $timeout, $location) {
+            console.log('MainController 初始化');
+            
+            // 初始化变量
+            $scope.connected = false;
+            $scope.blockNumber = 0;
+            $scope.searchInput = '';
+            $scope.latestBlock = null;
+            $scope.loading = false;
+            $scope.viewMode = 'home';
+            $scope.nodeUrl = 'http://localhost:8545';
+            $scope.web3 = null;
+            
+            // 初始化Web3
+            if (typeof Web3 !== 'undefined') {
+                try {
+                    $scope.web3 = new Web3(new Web3.providers.HttpProvider($scope.nodeUrl));
+                    console.log('Web3初始化成功');
+                } catch (e) {
+                    console.warn('Web3初始化失败:', e);
+                }
+            }
+            
+            // 检查连接
+            $scope.checkConnection = function() {
+                console.log('检查私有链连接...');
+                $scope.loading = true;
+                
+                $http({
+                    method: 'POST',
+                    url: $scope.nodeUrl,
+                    data: {
+                        jsonrpc: "2.0",
+                        method: "eth_blockNumber",
+                        params: [],
+                        id: 1
+                    },
+                    timeout: 5000
+                }).then(function(response) {
+                    console.log('RPC响应:', response.data);
+                    
+                    if (response.data && response.data.result) {
+                        var blockNum = parseInt(response.data.result, 16);
+                        $scope.connected = true;
+                        $scope.blockNumber = blockNum;
+                        $scope.loading = false;
+                        
+                        console.log('✅ 连接成功，区块高度:', blockNum);
+                        
+                        // 获取最新区块
+                        $scope.getLatestBlock();
+                    } else {
+                        throw new Error('无效的RPC响应');
+                    }
+                }).catch(function(error) {
+                    console.error('❌ 连接失败:', error);
+                    $scope.connected = false;
+                    $scope.loading = false;
+                    
+                    // 显示连接警告
+                    $scope.showConnectionAlert();
+                });
+            };
+            
+            // 获取最新区块
+            $scope.getLatestBlock = function() {
+                if (!$scope.web3) {
+                    console.log('Web3未初始化，跳过获取区块');
+                    return;
+                }
+                
+                console.log('获取最新区块...');
+                $scope.web3.eth.getBlock('latest', function(error, block) {
+                    if (error) {
+                        console.error('获取区块失败:', error);
+                        return;
+                    }
+                    
+                    $scope.$apply(function() {
+                        $scope.latestBlock = block;
+                        console.log('获取到区块:', block.number);
+                    });
+                });
+            };
+            
+            // 搜索功能
+            $scope.search = function() {
+                if (!$scope.searchInput || $scope.searchInput.trim() === '') {
+                    alert('请输入搜索内容');
+                    return;
+                }
+                
+                var input = $scope.searchInput.trim();
+                console.log('搜索:', input);
+                
+                // 判断搜索类型
+                if (input.startsWith('0x')) {
+                    if (input.length === 66) {
+                        // 交易哈希
+                        alert('查看交易: ' + input);
+                        $scope.viewBlock(input);
+                    } else if (input.length === 42) {
+                        // 地址
+                        alert('查看地址: ' + input);
+                        $scope.viewAddress(input);
+                    } else {
+                        alert('请输入有效的交易哈希（66字符）或地址（42字符）');
+                    }
+                } else if (/^\d+$/.test(input)) {
+                    // 区块号
+                    $scope.viewBlock(input);
+                } else {
+                    alert('请输入交易哈希、地址或区块号');
+                }
+                
+                $scope.searchInput = '';
+            };
+            
+            // 查看区块
+            $scope.viewBlock = function(blockId) {
+                console.log('查看区块:', blockId);
+                $scope.viewMode = 'block';
+                $scope.currentBlockId = blockId;
+                $scope.blockDetail = null;
+                $scope.loading = true;
+                
+                $http({
+                    method: 'POST',
+                    url: $scope.nodeUrl,
+                    data: {
+                        jsonrpc: "2.0",
+                        method: "eth_getBlockByNumber",
+                        params: [typeof blockId === 'number' ? '0x' + blockId.toString(16) : blockId, true],
+                        id: 1
+                    }
+                }).then(function(response) {
+                    $scope.loading = false;
+                    if (response.data && response.data.result) {
+                        $scope.blockDetail = response.data.result;
+                    } else {
+                        alert('区块不存在');
+                    }
+                }).catch(function(error) {
+                    $scope.loading = false;
+                    alert('获取区块失败: ' + (error.message || '未知错误'));
+                });
+            };
+            
+            // 查看地址
+            $scope.viewAddress = function(address) {
+                console.log('查看地址:', address);
+                alert('地址功能开发中: ' + address);
+            };
+            
+            // 返回首页
+            $scope.goHome = function() {
+                $scope.viewMode = 'home';
+                $scope.checkConnection();
+            };
+            
+            // 显示连接警告
+            $scope.showConnectionAlert = function() {
+                // 使用简单的alert而不是模态框，避免jQuery依赖
+                var message = '无法连接到私有链节点 ' + $scope.nodeUrl + '\n\n' +
+                             '请确保:\n' +
+                             '1. Geth节点正在运行\n' +
+                             '2. RPC地址正确\n' +
+                             '3. Geth启动了 --http 参数\n' +
+                             '4. 允许跨域访问';
+                
+                if (confirm(message + '\n\n是否重试连接?')) {
+                    $scope.checkConnection();
+                }
+            };
+            
+            // 页面加载后自动检查连接
+            $timeout(function() {
+                console.log('开始初始连接检查...');
+                $scope.checkConnection();
+            }, 1000);
+            
+            // 定时检查连接
+            var checkInterval = setInterval(function() {
+                if ($scope.connected) {
+                    $scope.checkConnection();
+                }
+            }, 30000);
+            
+            // 清理定时器
+            $scope.$on('$destroy', function() {
+                clearInterval(checkInterval);
+            });
+        }
+    ]);
+    
+    // 启动应用
+    angular.element(document).ready(function() {
+        console.log('文档就绪，启动Angular应用...');
+        angular.bootstrap(document, ['ethExplorer']);
+        console.log('✅ 应用启动成功');
+    });
+    
+    console.log('=== 应用初始化完成 ===');
+})();
+
+// 简单的加载状态样式
+document.addEventListener('DOMContentLoaded', function() {
+    // 添加spinner样式
+    var style = document.createElement('style');
+    style.textContent = `
+        .spinner-border {
+            display: inline-block;
+            width: 2rem;
+            height: 2rem;
+            vertical-align: text-bottom;
+            border: 0.25em solid currentColor;
+            border-right-color: transparent;
+            border-radius: 50%;
+            animation: spinner-border .75s linear infinite;
+        }
+        @keyframes spinner-border {
+            to { transform: rotate(360deg); }
+        }
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0,0,0,0);
+            border: 0;
+        }
+    `;
+    document.head.appendChild(style);
+});
 </script>
+
 </body>
 </html>
